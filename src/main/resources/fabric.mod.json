@@ -1,0 +1,21 @@
+{
+	"schemaVersion": 1,
+	"id": "sessioniq",
+	"version": "${version}",
+	"name": "SessionIQ",
+	"description": "Local session analytics and history: play sessions, server visits, chat archive, disconnect diagnostics, timeline and statistics. Everything stays on your computer.",
+	"authors": ["hoops"],
+	"license": "MIT",
+	"icon": "assets/sessioniq/icon.png",
+	"environment": "client",
+	"entrypoints": {
+		"client": ["com.sessioniq.SessionIQClient"]
+	},
+	"mixins": ["sessioniq.mixins.json"],
+	"depends": {
+		"fabricloader": ">=0.17.0",
+		"minecraft": "~1.21.11",
+		"java": ">=21",
+		"fabric-api": "*"
+	}
+}

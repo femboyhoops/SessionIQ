@@ -1,0 +1,17 @@
+{
+	"required": true,
+	"package": "com.sessioniq.mixin",
+	"compatibilityLevel": "JAVA_21",
+	"client": [
+		"ClientCommonNetworkHandlerMixin",
+		"ClientConnectionMixin",
+		"ClientLoginNetworkHandlerMixin",
+		"ConnectScreenAccessor",
+		"ConnectScreenMixin",
+		"DeathScreenAccessor",
+		"DisconnectedScreenMixin"
+	],
+	"injectors": {
+		"defaultRequire": 0
+	}
+}

@@ -1,0 +1,100 @@
+plugins {
+	id 'net.fabricmc.fabric-loom-remap' version "${loom_version}"
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+	archivesName = project.archives_base_name
+}
+
+repositories {
+	mavenCentral()
+}
+
+loom {
+	mods {
+		"sessioniq" {
+			sourceSet sourceSets.main
+		}
+	}
+}
+
+fabricApi {
+	configureTests {
+		createSourceSet = true
+		modId = "sessioniq-gametest"
+		enableGameTests = false
+		enableClientGameTests = true
+		eula = true
+	}
+}
+
+loom.runs.matching { it.name == "clientGameTest" }.configureEach {
+	vmArg "-Dsessioniq.dataDir=${file('build/gametest-data').absolutePath}"
+	vmArg "-Dsessioniq.gametest.phase=${project.findProperty('siqPhase') ?: 'full'}"
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+
+	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+	testImplementation "org.junit.jupiter:junit-jupiter:5.11.4"
+	testRuntimeOnly "org.junit.platform:junit-platform-launcher:1.11.4"
+}
+
+test {
+	useJUnitPlatform()
+}
+
+configurations {
+	productionRuntimeMods
+}
+
+dependencies {
+	productionRuntimeMods "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+}
+
+tasks.register("gametestJar", Jar) {
+	archiveClassifier = "gametest-dev"
+	from sourceSets.gametest.output
+}
+
+tasks.register("remapGametestJar", net.fabricmc.loom.task.RemapJarTask) {
+	inputFile = tasks.named("gametestJar").flatMap { it.archiveFile }
+	archiveClassifier = "gametest"
+	addNestedDependencies = false
+}
+
+tasks.register("prodClientGameTest", net.fabricmc.loom.task.prod.ClientProductionRunTask) {
+	mods.from(tasks.named("remapJar"))
+	mods.from(tasks.named("remapGametestJar"))
+	mods.from(configurations.productionRuntimeMods)
+	jvmArgs.add("-Dfabric.client.gametest")
+	jvmArgs.add("-Dsessioniq.dataDir=${file('build/prod-gametest-data').absolutePath}")
+	jvmArgs.add("-Dsessioniq.gametest.phase=prod")
+	runDir = file("build/run/prodGameTest")
+}
+
+processResources {
+	def version = project.version
+	inputs.property "version", version
+
+	filesMatching("fabric.mod.json") {
+		expand "version": version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 21
+	it.options.encoding = "UTF-8"
+}
+
+java {
+	sourceCompatibility = JavaVersion.VERSION_21
+	targetCompatibility = JavaVersion.VERSION_21
+}
