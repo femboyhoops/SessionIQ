@@ -44,7 +44,7 @@ import java.util.List;
 import java.util.Map;
 
 public class SettingsPage extends Page {
-	private static final String[] TABS = {"General", "Recording", "Privacy", "Appearance", "Storage", "Advanced", "Credits"};
+	private static final String[] TABS = {"General", "Recording", "Privacy", "Online", "Appearance", "Storage", "Advanced", "Credits"};
 	private static final String CREATOR = "Hoops";
 	private static final String[] EARLY_FEEDBACK = {"KarmaCritz", "Domusz", "juicebox", "Arweku"};
 	private int tab;
@@ -73,6 +73,14 @@ public class SettingsPage extends Page {
 		return siq.config.get();
 	}
 
+	public void showTab(String name) {
+		int i = java.util.Arrays.asList(TABS).indexOf(name);
+		if (i >= 0) {
+			tab = i;
+			capturingKey = false;
+		}
+	}
+
 	private void changed() {
 		siq.config.changed();
 	}
@@ -95,10 +103,11 @@ public class SettingsPage extends Page {
 		int used = switch (tab) {
 			case 1 -> recording(ui, cx, cy, maxW);
 			case 2 -> privacy(ui, cx, cy, maxW);
-			case 3 -> appearance(ui, cx, cy, cw);
-			case 4 -> storage(ui, cx, cy, maxW);
-			case 5 -> advanced(ui, cx, cy, maxW);
-			case 6 -> credits(ui, cx, cy, maxW);
+			case 3 -> online(ui, cx, cy, maxW);
+			case 4 -> appearance(ui, cx, cy, cw);
+			case 5 -> storage(ui, cx, cy, maxW);
+			case 6 -> advanced(ui, cx, cy, maxW);
+			case 7 -> credits(ui, cx, cy, maxW);
 			default -> general(ui, cx, cy, maxW);
 		};
 		ui.endScroll(sid, used + pad * 2);
@@ -186,18 +195,19 @@ public class SettingsPage extends Page {
 			cy += ph + 6;
 		}
 
+		List<SiqScreen.NavItem> choices = SiqScreen.NAV.stream().filter(screen::showInSidebar).toList();
 		List<String> pages = new ArrayList<>();
 		int pageIndex = 0;
-		for (int i = 0; i < SiqScreen.NAV.size(); i++) {
-			pages.add(SiqScreen.NAV.get(i).label());
-			if (SiqScreen.NAV.get(i).key().equals(cfg().defaultPage)) {
+		for (int i = 0; i < choices.size(); i++) {
+			pages.add(choices.get(i).label());
+			if (choices.get(i).key().equals(cfg().defaultPage)) {
 				pageIndex = i;
 			}
 		}
 		rh = labelRow(ui, x, cy, w, "Default page", "Shown when the dashboard opens.", 150);
 		int pi = ui.dropdown("set#defpage", x + w - 150, cy, 150, ui.buttonH(), pages, pageIndex);
 		if (pi != pageIndex) {
-			cfg().defaultPage = SiqScreen.NAV.get(pi).key();
+			cfg().defaultPage = choices.get(pi).key();
 			changed();
 		}
 		cy += rh;
@@ -337,7 +347,8 @@ public class SettingsPage extends Page {
 
 	private int privacy(Ui ui, int x, int y, int w) {
 		int cy = y;
-		String statement = "SessionIQ is entirely local. It has no network features: nothing is uploaded, synced or shared, and no account or API key is used. "
+		String statement = "Your recorded history stays on this computer. The optional online features (Settings › Online) upload only a summary: totals, "
+			+ "playtime and joins per public server, and what you let friends see. Chat, disconnects and timelines are never uploaded. "
 			+ "Outgoing commands, anything you type, passwords and keystrokes are never recorded; only messages the server sends to your chat are archived, "
 			+ "and server replies that repeat a command you just sent are discarded too. "
 			+ "Your archive can still contain sensitive information, such as server addresses and other players' messages.";
@@ -394,6 +405,126 @@ public class SettingsPage extends Page {
 						e == null ? SiqScreen.TOAST_SUCCESS : SiqScreen.TOAST_ERROR), SessionIQ.mainThread()))));
 		}
 		cy += ui.buttonH() + 10;
+		return cy - y;
+	}
+
+	private int online(Ui ui, int x, int y, int w) {
+		int cy = y;
+		SiqConfig c = cfg();
+		com.sessioniq.online.OnlineService online = siq.online;
+		com.sessioniq.online.OnlineService.Status st = online.status();
+		String status;
+		int color;
+		String action = null;
+		switch (st) {
+			case UNAVAILABLE -> {
+				status = "Online features are not available in this build of SessionIQ.";
+				color = ui.text2;
+			}
+			case DISABLED -> {
+				status = "Online features are off. Nothing is uploaded and friends cannot see you.";
+				color = ui.text2;
+			}
+			case NEEDS_NOTICE -> {
+				status = "Paused until you review what is shared. Nothing has been uploaded.";
+				color = ui.warning;
+				action = "Review";
+			}
+			case SIGNING_IN -> {
+				status = "Signing in with your Minecraft account…";
+				color = ui.text2;
+			}
+			case SIGNED_OUT -> {
+				status = "Not signed in: " + online.signInError() + " Global Statistics and Suggestions still work.";
+				color = ui.warning;
+				action = "Try again";
+			}
+			default -> {
+				status = "Signed in as " + online.name() + (online.isAdmin() ? " (admin)" : "") + ".";
+				color = ui.success;
+			}
+		}
+		int aw = action == null ? 0 : ui.buttonWidth(action, null) + 10;
+		int ph = ui.paragraphHeight(status, w - 40 - aw) + 16;
+		ui.panel(x, cy, w, Math.max(ph, ui.buttonH() + 12), Ui.argb(Ui.mix(ui.th.surface, ui.th.accent, 0.06f), 1f), Ui.withAlpha(color, 0.5f), ui.radius());
+		ui.icon(st == com.sessioniq.online.OnlineService.Status.SIGNED_IN ? Icons.CHECK : Icons.GLOBE, x + 10, cy + 9, color);
+		ui.paragraph(status, x + 26, cy + 8, w - 40 - aw, ui.text);
+		if (action != null && ui.button("set#onlineaction", x + w - aw, cy + 6, aw - 10, ui.buttonH(), action, Ui.Btn.SECONDARY)) {
+			if (st == com.sessioniq.online.OnlineService.Status.NEEDS_NOTICE) {
+				screen.openModal(new com.sessioniq.gui.OnlineNoticeModal(screen));
+			} else {
+				online.retrySignIn();
+			}
+		}
+		cy += Math.max(ph, ui.buttonH() + 12) + 14;
+		if (st == com.sessioniq.online.OnlineService.Status.UNAVAILABLE) {
+			return cy - y;
+		}
+
+		cy += section(ui, x, cy, w, "Online features");
+		cy += toggleRow(ui, "set#online", x, cy, w, "Online features", "Global Statistics, Friends and Suggestions. When off, SessionIQ makes no network requests at all.",
+			c.onlineEnabled, () -> {
+				c.onlineEnabled = !c.onlineEnabled;
+				changed();
+			});
+		cy += section(ui, x, cy, w, "Global Statistics");
+		cy += toggleRow(ui, "set#shareglobal", x, cy, w, "Show me in Global Statistics",
+			"Your username, total playtime, sessions, servers joined and most-played public server appear on the leaderboards, and your public servers count towards the server totals. "
+				+ "Turning this off removes your servers from the totals and you from the leaderboards.",
+			c.shareGlobalStats, () -> {
+				c.shareGlobalStats = !c.shareGlobalStats;
+				changed();
+			});
+		cy += section(ui, x, cy, w, "What friends can see");
+		cy += toggleRow(ui, "set#fonline", x, cy, w, "Online status", "Whether you are online, and when you were last seen.", c.friendsShowOnline, () -> {
+			c.friendsShowOnline = !c.friendsShowOnline;
+			changed();
+		});
+		cy += toggleRow(ui, "set#fserver", x, cy, w, "Current server", "The public server you are playing on. Private servers, LAN and single-player only show as such, never their address.",
+			c.friendsShowServer, () -> {
+				c.friendsShowServer = !c.friendsShowServer;
+				changed();
+			});
+		cy += toggleRow(ui, "set#fstats", x, cy, w, "Your stats", "Playtime, sessions, servers joined and your most-played server.", c.friendsShowStats, () -> {
+			c.friendsShowStats = !c.friendsShowStats;
+			changed();
+		});
+		cy += toggleRow(ui, "set#fchat", x, cy, w, "Friend chat", "Let friends message you. Messages are deleted from the SessionIQ server after 7 days.", c.friendsAllowChat, () -> {
+			c.friendsAllowChat = !c.friendsAllowChat;
+			changed();
+		});
+		cy += toggleRow(ui, "set#fnotify", x, cy, w, "Notifications", "Show a pop-up for new messages and friend requests while you play.", c.friendNotifications, () -> {
+			c.friendNotifications = !c.friendNotifications;
+			changed();
+		});
+
+		cy += section(ui, x, cy, w, "Your data");
+		String never = "Never uploaded: chat logs, disconnects, timelines, single-player worlds, and private or LAN server addresses. "
+			+ "To sign in, SessionIQ uses the Mojang-signed key Minecraft already has for secure chat; your Minecraft login is never sent to SessionIQ.";
+		cy += ui.paragraph(never, x, cy, w, ui.text2) + 10;
+		int bx = x;
+		int vw = ui.buttonWidth("View what's sent", Icons.EYE);
+		if (ui.button("set#whatsent", bx, cy, vw, ui.buttonH(), "View what's sent", Icons.EYE, Ui.Btn.SECONDARY, siq.isReady())) {
+			screen.openModal(new com.sessioniq.gui.WhatsSentModal());
+		}
+		bx += vw + 6;
+		int nw = ui.buttonWidth("Read the notice again", null);
+		if (ui.button("set#notice", bx, cy, nw, ui.buttonH(), "Read the notice again", Ui.Btn.GHOST)) {
+			screen.openModal(new com.sessioniq.gui.OnlineNoticeModal(screen));
+		}
+		cy += ui.buttonH() + 10;
+		int dw = ui.buttonWidth("Delete my online data", Icons.TRASH);
+		if (ui.button("set#deleteonline", x, cy, dw, ui.buttonH(), "Delete my online data", Icons.TRASH, Ui.Btn.DANGER, true)) {
+			screen.confirm("Delete your online data?", "Removes your stats, server totals, friends, friend requests and messages from the SessionIQ server, and forgets your "
+					+ "anonymous launch counter. Online features are then turned off. Your local history is not affected.", "Delete online data", true,
+				() -> online.deleteOnlineData().whenCompleteAsync((v, e) -> screen.toast(e == null ? "Your online data was deleted and online features are off"
+					: "Could not delete: " + com.sessioniq.online.ApiClient.message(e), e == null ? SiqScreen.TOAST_SUCCESS : SiqScreen.TOAST_ERROR), SessionIQ.mainThread()));
+		}
+		cy += ui.buttonH() + 10;
+		if (online.serviceUrl() != null) {
+			ui.textClip("Service: " + online.serviceUrl(), x, cy, w, ui.text3);
+			cy += ui.lineH() + 4;
+		}
 		return cy - y;
 	}
 

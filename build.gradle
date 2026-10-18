@@ -33,7 +33,15 @@ fabricApi {
 
 loom.runs.matching { it.name == "clientGameTest" }.configureEach {
 	vmArg "-Dsessioniq.dataDir=${file('build/gametest-data').absolutePath}"
-	vmArg "-Dsessioniq.gametest.phase=${project.findProperty('siqPhase') ?: 'full'}"
+	def phase = project.findProperty('siqPhase') ?: 'full'
+	vmArg "-Dsessioniq.gametest.phase=${phase}"
+	if (phase == 'online') {
+		// Needs the backend running locally: cd backend && npm run dev -- --var ADMIN_UUID:5e551017-0000-4000-8000-000000000001
+		vmArg "-Dsessioniq.api=${project.findProperty('siqApi') ?: 'http://127.0.0.1:8787'}"
+		programArgs "--username", "SiqTester", "--uuid", "5e551017-0000-4000-8000-000000000001"
+	} else {
+		vmArg "-Dsessioniq.offline=true"
+	}
 }
 
 dependencies {
@@ -77,15 +85,18 @@ tasks.register("prodClientGameTest", net.fabricmc.loom.task.prod.ClientProductio
 	jvmArgs.add("-Dfabric.client.gametest")
 	jvmArgs.add("-Dsessioniq.dataDir=${file('build/prod-gametest-data').absolutePath}")
 	jvmArgs.add("-Dsessioniq.gametest.phase=prod")
+	jvmArgs.add("-Dsessioniq.offline=true")
 	runDir = file("build/run/prodGameTest")
 }
 
 processResources {
 	def version = project.version
+	def apiUrl = (project.findProperty("api_url") ?: "").toString().trim()
 	inputs.property "version", version
+	inputs.property "apiUrl", apiUrl
 
 	filesMatching("fabric.mod.json") {
-		expand "version": version
+		expand "version": version, "api_url": apiUrl
 	}
 }
 

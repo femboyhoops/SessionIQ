@@ -2,8 +2,12 @@ package com.sessioniq.gui;
 
 import com.sessioniq.SessionIQ;
 import com.sessioniq.SessionIQClient;
+import com.sessioniq.gui.pages.AdminPage;
 import com.sessioniq.gui.pages.ChatPage;
 import com.sessioniq.gui.pages.DisconnectsPage;
+import com.sessioniq.gui.pages.FriendsPage;
+import com.sessioniq.gui.pages.GlobalPage;
+import com.sessioniq.gui.pages.SuggestionsPage;
 import com.sessioniq.gui.pages.OverviewPage;
 import com.sessioniq.gui.pages.ServersPage;
 import com.sessioniq.gui.pages.SessionsPage;
@@ -38,8 +42,13 @@ public final class SiqScreen extends Screen {
 		new NavItem("disconnects", "Disconnects", Icons.DISCONNECTS, DisconnectsPage::new),
 		new NavItem("timeline", "Timeline", Icons.TIMELINE, TimelinePage::new),
 		new NavItem("statistics", "Statistics", Icons.STATISTICS, StatisticsPage::new),
+		new NavItem("global", "Global", Icons.GLOBE, GlobalPage::new),
+		new NavItem("friends", "Friends", Icons.FRIENDS, FriendsPage::new),
+		new NavItem("suggestions", "Suggestions", Icons.BULB, SuggestionsPage::new),
+		new NavItem("admin", "Admin", Icons.SHIELD, AdminPage::new),
 		new NavItem("settings", "Settings", Icons.SETTINGS, SettingsPage::new)
 	);
+	private static final int FIRST_ONLINE = 7;
 
 	public static final Identifier LOGO = Identifier.of("sessioniq", "icon.png");
 	public static final int LOGO_SIZE = 128;
@@ -63,11 +72,19 @@ public final class SiqScreen extends Screen {
 		this.parent = parent;
 		int start = 0;
 		for (int i = 0; i < NAV.size(); i++) {
-			if (NAV.get(i).key().equals(siq.config.get().defaultPage)) {
+			if (NAV.get(i).key().equals(siq.config.get().defaultPage) && showInSidebar(NAV.get(i))) {
 				start = i;
 			}
 		}
 		selectSection(start);
+		if (siq.online.takeNoticeTurn()) {
+			openModal(new OnlineNoticeModal(this));
+		}
+	}
+
+	/** The Admin page exists only for the developer's account; everyone else never sees it listed. */
+	public boolean showInSidebar(NavItem item) {
+		return !"admin".equals(item.key()) || siq.online.isAdmin();
 	}
 
 	public void selectSection(int index) {
@@ -212,10 +229,21 @@ public final class SiqScreen extends Screen {
 			ui.text("SessionIQ", 34, y + 4, ui.text);
 		}
 		y += 30;
-		int itemH = ui.compact ? 20 : 24;
+		int shown = 0;
+		for (NavItem item : NAV) {
+			if (showInSidebar(item)) {
+				shown++;
+			}
+		}
+		int footer = collapsed ? 26 : 40;
+		int room = h - y - footer - 8 - 12;
+		int itemH = Math.max(14, Math.min(ui.compact ? 20 : 24, room / Math.max(1, shown) - 2));
 		for (int i = 0; i < NAV.size(); i++) {
 			NavItem item = NAV.get(i);
-			if (i == NAV.size() - 1) {
+			if (!showInSidebar(item)) {
+				continue;
+			}
+			if (i == NAV.size() - 1 || i == FIRST_ONLINE) {
 				y += 6;
 				ui.hline(10, y - 4, sideW - 20, ui.border);
 			}
@@ -235,10 +263,18 @@ public final class SiqScreen extends Screen {
 			}
 			int color = sel ? ui.text : Ui.mixArgb(ui.text2, ui.text, hv);
 			ui.icon(item.icon(), ix + (collapsed ? (iw - 9) / 2 : 8), y + (itemH - 9) / 2, sel ? ui.accent : color);
+			int badge = "friends".equals(item.key()) ? siq.online.unreadTotal() + siq.online.pendingRequests() : 0;
 			if (!collapsed) {
 				ui.textMid(item.label(), ix + 24, y, itemH, color);
+				if (badge > 0) {
+					String b = badge > 99 ? "99+" : String.valueOf(badge);
+					ui.badge(ix + iw - ui.badgeW(b) - 4, y + (itemH - ui.lineH() - 3) / 2, b, ui.accent);
+				}
 			} else {
-				ui.tooltip(id, item.label());
+				ui.tooltip(id, item.label() + (badge > 0 ? " (" + badge + " new)" : ""));
+				if (badge > 0) {
+					ui.dot(ix + iw - 5, y + 5, 2, ui.accent);
+				}
 			}
 			if (ui.clicked(id)) {
 				selectSection(i);

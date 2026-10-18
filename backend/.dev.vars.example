@@ -1,0 +1,17 @@
+# Copy to .dev.vars for `npm run dev`. Never commit .dev.vars.
+# In production set these with `npx wrangler secret put <NAME>`.
+
+# Signs the session tokens the mod receives after signing in. Any long random string.
+TOKEN_SECRET=change-me-to-a-long-random-string
+
+# Optional: a Discord webhook URL that new suggestions are forwarded to.
+DISCORD_WEBHOOK=
+
+# Local testing only: lets requests to localhost sign in without a player certificate (offline dev
+# accounts have none) and skips the playerdb.co username lookup.
+# It is ignored for any other host, so it cannot take effect in production.
+ALLOW_DEV_AUTH=1
+
+# Local tests only: filled in by `npm run setup-test-key`. A stand-in for Mojang's certificate key,
+# trusted only for localhost requests when ALLOW_DEV_AUTH=1, so test/smoke.mjs can issue certificates.
+DEV_CERT_KEY=

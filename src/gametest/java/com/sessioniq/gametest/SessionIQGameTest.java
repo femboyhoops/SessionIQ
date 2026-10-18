@@ -62,8 +62,166 @@ public class SessionIQGameTest implements FabricClientGameTest {
 		switch (phase) {
 			case "crash" -> crashPhase(ctx);
 			case "recover" -> recoverPhase(ctx);
+			case "online" -> onlinePhase(ctx);
 			default -> fullPhase(ctx);
 		}
+	}
+
+	// Online phase: runs against a local backend (see build.gradle) and drives a second player through its API.
+
+	private static final String API = System.getProperty("sessioniq.api", "http://127.0.0.1:8787");
+	private static final java.net.http.HttpClient HTTP = java.net.http.HttpClient.newHttpClient();
+
+	private static com.google.gson.JsonObject http(String method, String path, Object body, String token) {
+		try {
+			var b = java.net.http.HttpRequest.newBuilder(java.net.URI.create(API + path)).header("content-type", "application/json");
+			if (token != null) {
+				b.header("authorization", "Bearer " + token);
+			}
+			b.method(method, body == null ? java.net.http.HttpRequest.BodyPublishers.noBody()
+				: java.net.http.HttpRequest.BodyPublishers.ofString(com.sessioniq.util.Json.COMPACT.toJson(body)));
+			var res = HTTP.send(b.build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+			if (res.statusCode() != 200) {
+				throw new AssertionError(method + " " + path + " -> " + res.statusCode() + " " + res.body());
+			}
+			return JsonParser.parseString(res.body()).getAsJsonObject();
+		} catch (java.io.IOException | InterruptedException e) {
+			throw new AssertionError("backend not reachable at " + API + "; start it with `npm run dev` in backend/", e);
+		}
+	}
+
+	private static String[] otherPlayer(String name) {
+		String uuid = java.util.UUID.randomUUID().toString();
+		String nonce = http("POST", "/v1/auth/challenge", java.util.Map.of("uuid", uuid), null).get("nonce").getAsString();
+		String token = http("POST", "/v1/auth/verify", java.util.Map.of("uuid", uuid, "name", name, "nonce", nonce), null).get("token").getAsString();
+		return new String[]{uuid, token};
+	}
+
+	private void onlinePhase(ClientGameTestContext ctx) {
+		ctx.runOnClient(c -> {
+			siq().config.get().onlineNoticeAccepted = 0;
+			siq().config.get().onlineEnabled = true;
+			siq().config.changed();
+		});
+		check(on(ctx, c -> siq().online.status() == com.sessioniq.online.OnlineService.Status.NEEDS_NOTICE), "online features wait for the notice");
+		ctx.waitFor(c -> c.currentScreen instanceof SiqScreen, 400);
+		check(on(ctx, c -> ((SiqScreen) c.currentScreen).hasModal()), "the notice opens on the title screen at first launch");
+		ctx.waitTicks(20);
+		ctx.takeScreenshot("o_notice");
+		ctx.runOnClient(c -> ((SiqScreen) c.currentScreen).openModal(new com.sessioniq.gui.WhatsSentModal()));
+		ctx.waitTicks(20);
+		ctx.takeScreenshot("o_whats_sent");
+		ctx.getInput().pressKey(GLFW.GLFW_KEY_ESCAPE);
+		ctx.getInput().pressKey(GLFW.GLFW_KEY_ESCAPE);
+		ctx.waitTicks(5);
+		check(on(ctx, c -> siq().online.status() == com.sessioniq.online.OnlineService.Status.NEEDS_NOTICE), "closing the notice without accepting uploads nothing");
+
+		ctx.runOnClient(c -> siq().online.acceptNotice());
+		ctx.waitFor(c -> siq().online.signedIn(), 600);
+		check(true, "signed in as " + on(ctx, c -> siq().online.name()));
+		ctx.waitFor(c -> siq().online.isAdmin(), 200);
+
+		String[] friend = otherPlayer("Friendly");
+		http("POST", "/v1/me/sync", java.util.Map.of("playtimeMs", 54_000_000L, "sessions", 40, "totalJoins", 88, "serversJoined", 3, "topServer", "mc.hypixel.net",
+			"topServerMs", 40_000_000L, "servers", List.of(java.util.Map.of("host", "mc.hypixel.net", "playtimeMs", 40_000_000L, "joins", 60),
+				java.util.Map.of("host", "play.cubecraft.net", "playtimeMs", 14_000_000L, "joins", 28))), friend[1]);
+		http("POST", "/v1/friends/request", java.util.Map.of("name", "SiqTester"), friend[1]);
+
+		ctx.setScreen(() -> new SiqScreen(null));
+		ctx.waitForScreen(SiqScreen.class);
+		ctx.runOnClient(c -> ((SiqScreen) c.currentScreen).selectSection("friends"));
+		ctx.waitFor(c -> siq().online.friends() != null && !siq().online.friends().incoming.isEmpty(), 400);
+		ctx.waitTicks(20);
+		ctx.takeScreenshot("o_friends_request");
+		await(on(ctx, c -> siq().online.friendAction("respond", java.util.Map.of("uuid", friend[0], "accept", true))));
+		ctx.waitFor(c -> siq().online.liveConnected(), 200);
+		check(true, "live connection is open");
+
+		// Sender side: the list updates the moment the other player accepts, with no reload.
+		String[] pal = otherPlayer("Pal");
+		await(on(ctx, c -> siq().online.requestFriend("Pal")));
+		http("POST", "/v1/friends/respond", java.util.Map.of("uuid", "5e551017-0000-4000-8000-000000000001", "accept", true), pal[1]);
+		ctx.waitFor(c -> siq().online.friend(pal[0]) != null, 100);
+		check(true, "an accepted request appears on the sender's list instantly");
+
+		http("POST", "/v1/presence", java.util.Map.of("online", true, "activity", "server", "server", "londs.mcpvp.com"), friend[1]);
+		ctx.waitFor(c -> siq().online.friend(friend[0]) != null && "server:mcpvp.com".equals(siq().online.friend(friend[0]).activity), 100);
+		check(true, "a friend joining a server shows instantly, grouped under the main domain");
+		http("POST", "/v1/chat/send", java.util.Map.of("to", "5e551017-0000-4000-8000-000000000001", "text", "hey! want to play bedwars later?"), friend[1]);
+		ctx.waitFor(c -> siq().online.friend(friend[0]).unread == 1, 100);
+		check(true, "a new message arrives instantly and is counted as unread");
+		ctx.waitTicks(5);
+		ctx.takeScreenshot("o_message_toast");
+		ctx.waitTicks(20);
+		ctx.takeScreenshot("o_friends_list");
+
+		ctx.runOnClient(c -> ((SiqScreen) c.currentScreen).push(new com.sessioniq.gui.pages.FriendDetailPage((SiqScreen) c.currentScreen, friend[0], "Friendly")));
+		ctx.waitTicks(60);
+		ctx.runOnClient(c -> ((SiqScreen) c.currentScreen).ui.field("friend#input" + friend[0]).set("sure, after dinner"));
+		ctx.runOnClient(c -> ((SiqScreen) c.currentScreen).ui.focus("friend#input" + friend[0]));
+		ctx.getInput().pressKey(GLFW.GLFW_KEY_ENTER);
+		ctx.waitTicks(60);
+		com.google.gson.JsonObject convo = http("GET", "/v1/chat?with=5e551017-0000-4000-8000-000000000001", null, friend[1]);
+		check(convo.getAsJsonArray("messages").size() == 2, "the reply typed in the chat box reached the friend");
+		ctx.takeScreenshot("o_friend_detail");
+
+		ctx.runOnClient(c -> siq().online.onConfigChanged());
+		ctx.waitTicks(100);
+		HTTP.sendAsync(java.net.http.HttpRequest.newBuilder(java.net.URI.create(API + "/cdn-cgi/handler/scheduled")).build(), java.net.http.HttpResponse.BodyHandlers.discarding()).join();
+		ctx.runOnClient(c -> ((SiqScreen) c.currentScreen).selectSection("global"));
+		ctx.waitFor(c -> {
+			var page = ((SiqScreen) c.currentScreen).current();
+			return page instanceof com.sessioniq.gui.pages.GlobalPage;
+		}, 100);
+		ctx.waitTicks(80);
+		ctx.takeScreenshot("o_global");
+		com.google.gson.JsonObject global = http("GET", "/v1/global", null, null);
+		check(global.getAsJsonArray("topPlayers").toString().contains("Friendly"), "global statistics list players");
+
+		ctx.runOnClient(c -> ((SiqScreen) c.currentScreen).selectSection("suggestions"));
+		ctx.runOnClient(c -> ((SiqScreen) c.currentScreen).ui.field("suggest#text").set("Could the timeline show which friends were online at the same time?"));
+		ctx.waitTicks(20);
+		ctx.takeScreenshot("o_suggestions");
+		await(on(ctx, c -> siq().online.suggest("feature", "Could the timeline show which friends were online at the same time?", true)));
+
+		ctx.runOnClient(c -> ((SiqScreen) c.currentScreen).selectSection("admin"));
+		ctx.waitFor(c -> siq().online.onlineNow() != null, 200);
+		int before = on(ctx, c -> siq().online.onlineNow());
+		check(before >= 1, "the admin sees a live online count (" + before + ")");
+		java.net.http.WebSocket visitor = HTTP.newWebSocketBuilder().header("authorization", "Bearer " + friend[1])
+			.buildAsync(java.net.URI.create(API.replaceFirst("^http", "ws") + "/v1/live"), new java.net.http.WebSocket.Listener() {
+			}).join();
+		ctx.waitFor(c -> siq().online.onlineNow() == before + 1, 100);
+		check(true, "the count goes up the moment another player connects");
+		ctx.waitTicks(20);
+		ctx.takeScreenshot("o_admin");
+		visitor.sendClose(java.net.http.WebSocket.NORMAL_CLOSURE, "bye").join();
+		ctx.waitFor(c -> siq().online.onlineNow() == before, 100);
+		check(true, "and goes back down when they disconnect");
+		ctx.runOnClient(c -> ((SiqScreen) c.currentScreen).ui.scrollTo("admin#scroll", 600));
+		ctx.waitTicks(30);
+		ctx.takeScreenshot("o_admin_inbox");
+
+		ctx.runOnClient(c -> com.sessioniq.gui.OnlineGate.openOnlineSettings((SiqScreen) c.currentScreen));
+		ctx.waitTicks(30);
+		ctx.takeScreenshot("o_settings_online");
+
+		ctx.runOnClient(c -> {
+			siq().config.get().friendsShowServer = false;
+			siq().config.get().friendsShowStats = false;
+			siq().config.changed();
+		});
+		ctx.waitTicks(60);
+		com.google.gson.JsonObject seen = http("GET", "/v1/friends", null, friend[1]);
+		var me = seen.getAsJsonArray("friends").get(0).getAsJsonObject();
+		ctx.runOnClient(c -> {
+			siq().config.get().friendsShowServer = true;
+			siq().config.get().friendsShowStats = true;
+			siq().config.changed();
+		});
+		check(me.get("activity").isJsonNull() && me.get("stats").isJsonNull(), "privacy settings are pushed: friends no longer see server or stats");
+		ctx.setScreen(() -> null);
+		log("online phase passed");
 	}
 
 	private static SessionIQ siq() {
@@ -457,12 +615,12 @@ public class SessionIQGameTest implements FabricClientGameTest {
 
 		ctx.runOnClient(c -> ((SiqScreen) c.currentScreen).selectSection("settings"));
 		Object settings = on(ctx, c -> ((SiqScreen) c.currentScreen).current());
-		for (int tab = 1; tab < 7; tab++) {
+		for (int tab = 1; tab < 8; tab++) {
 			setTab(ctx, settings, "tab", tab);
 			ctx.waitTicks(30);
 			ctx.takeScreenshot("e_settings_tab" + tab);
 		}
-		setTab(ctx, settings, "tab", 3);
+		setTab(ctx, settings, "tab", 4);
 		ctx.runOnClient(c -> {
 			try {
 				Field editing = settings.getClass().getDeclaredField("editing");
@@ -479,7 +637,7 @@ public class SessionIQGameTest implements FabricClientGameTest {
 			}
 		});
 		ctx.waitTicks(20);
-		ctx.runOnClient(c -> ((SiqScreen) c.currentScreen).ui.scrollTo("set#body3", 160));
+		ctx.runOnClient(c -> ((SiqScreen) c.currentScreen).ui.scrollTo("set#body4", 160));
 		ctx.waitTicks(30);
 		ctx.takeScreenshot("e_theme_editor");
 		ctx.runOnClient(c -> {

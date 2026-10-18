@@ -1,0 +1,45 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "sessioniq-api",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-07-22",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"workers_dev": true,
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "sessioniq",
+			// Paste the id printed by `npx wrangler d1 create sessioniq` here.
+			"database_id": "78fbc7f1-b50c-4bed-b4f9-0c790ca9f1d2",
+			"migrations_dir": "migrations"
+		}
+	],
+	// One LiveHub per signed-in player: pushes "something changed" events to the game instantly.
+	"durable_objects": {
+		"bindings": [{ "name": "LIVE", "class_name": "LiveHub" }]
+	},
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["LiveHub"] }],
+	// Refreshes the Global Statistics snapshot and deletes expired friend messages.
+	"triggers": {
+		"crons": [
+			"*/30 * * * *"
+		]
+	},
+	"vars": {
+		// Minecraft UUID (with dashes) of the account that may open the in-game Admin page.
+		"ADMIN_UUID": "9d773568-b428-4153-a297-5a83bd2ef333",
+		// Days before friend chat messages are deleted from the database.
+		"MESSAGE_RETENTION_DAYS": "7"
+	},
+	// Invocation logs are off so request metadata (such as IP addresses) is never stored.
+	// Only the Worker's own error messages are logged, and they contain no personal data.
+	"observability": {
+		"enabled": true,
+		"logs": {
+			"enabled": true,
+			"invocation_logs": false
+		}
+	}
+}

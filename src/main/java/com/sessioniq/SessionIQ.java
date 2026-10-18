@@ -5,6 +5,7 @@ import com.sessioniq.config.ConfigManager;
 import com.sessioniq.export.ExportService;
 import com.sessioniq.model.ActiveState;
 import com.sessioniq.model.ServerMeta;
+import com.sessioniq.online.OnlineService;
 import com.sessioniq.storage.ChatArchive;
 import com.sessioniq.storage.DataPaths;
 import com.sessioniq.storage.Migrations;
@@ -52,6 +53,7 @@ public final class SessionIQ {
 	public final ChatCapture chatCapture;
 	public final BackupService backups;
 	public final ExportService exports;
+	public final OnlineService online;
 
 	private volatile boolean ready;
 	private volatile String startupFailure;
@@ -87,6 +89,8 @@ public final class SessionIQ {
 		this.exports = new ExportService(this);
 		this.tracker = new SessionTracker(this);
 		this.chatCapture = new ChatCapture(this);
+		this.online = new OnlineService(this);
+		online.load();
 	}
 
 	public static SessionIQ init() {
@@ -97,6 +101,7 @@ public final class SessionIQ {
 		siq.start();
 		Runtime.getRuntime().addShutdownHook(new Thread(siq::onJvmShutdown, "SessionIQ-ShutdownHook"));
 		config().addListener(() -> siq.tracker.onConfigChanged());
+		config().addListener(() -> siq.online.onConfigChanged());
 		return siq;
 	}
 
@@ -181,13 +186,12 @@ public final class SessionIQ {
 	}
 
 	private void writeReadme() throws IOException {
-		if (Files.exists(paths.readme)) {
-			return;
-		}
 		String text = """
 			SessionIQ data directory
 			========================
-			Everything SessionIQ records stays in this folder. Nothing is uploaded anywhere.
+			Everything SessionIQ records stays in this folder. The optional online features
+			(Settings > Online) upload only a summary: totals, playtime and joins per public server,
+			and what your friends may see. Chat, disconnects and timelines are never uploaded.
 
 			manifest.json            storage schema version and migration history
 			config.json              preferences
@@ -197,6 +201,7 @@ public final class SessionIQ {
 			chat/ID/part-NNNNN.jsonl received chat messages for a session, one JSON object per line
 			samples/ID.jsonl         ping and memory samples, one JSON object per line
 			servers/registry.json    server nicknames and groups you assigned
+			online.json              anonymous install id and SessionIQ sign-in token (online features)
 			backups/                 backup archives (zip + manifest with SHA-256 checksums)
 			exports/                 default destination for exports
 			quarantine/              copies of damaged files that could not be read (never deleted automatically)
@@ -204,6 +209,9 @@ public final class SessionIQ {
 			All timestamps are UTC epoch milliseconds. Durations are milliseconds measured with a monotonic clock.
 			Outgoing commands and anything you type are never recorded.
 			""";
+		if (Files.exists(paths.readme) && text.equals(Files.readString(paths.readme, StandardCharsets.UTF_8))) {
+			return;
+		}
 		AtomicFiles.writeString(paths.readme, text);
 	}
 
@@ -213,6 +221,7 @@ public final class SessionIQ {
 			chatFlushTicks = 0;
 			chat.flush();
 		}
+		online.tick(client);
 		long now = System.nanoTime();
 		if (ready && now >= nextBackupCheckNano) {
 			nextBackupCheckNano = now + 10L * 60 * 1_000_000_000L;
@@ -246,6 +255,7 @@ public final class SessionIQ {
 
 	public void shutdown() {
 		tracker.shutdown();
+		online.shutdown();
 		storage.shutdown(5000);
 		cleanShutdown = true;
 	}

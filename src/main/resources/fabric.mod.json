@@ -3,7 +3,7 @@
 	"id": "sessioniq",
 	"version": "${version}",
 	"name": "SessionIQ",
-	"description": "Local session analytics and history: play sessions, server visits, chat archive, disconnect diagnostics, timeline and statistics. Everything stays on your computer.",
+	"description": "Session analytics and history: play sessions, server visits, chat archive, disconnect diagnostics, timeline and statistics, kept on your computer. Optional online features: global statistics, friends and suggestions.",
 	"authors": ["hoops"],
 	"license": "MIT",
 	"icon": "assets/sessioniq/icon.png",
@@ -17,5 +17,8 @@
 		"minecraft": "~1.21.11",
 		"java": ">=21",
 		"fabric-api": "*"
+	},
+	"custom": {
+		"sessioniq:api": "${api_url}"
 	}
 }

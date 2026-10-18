@@ -16,6 +16,7 @@ import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.DeathScreen;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.screen.TitleScreen;
 import net.minecraft.client.gui.screen.multiplayer.ConnectScreen;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
@@ -46,6 +47,7 @@ public class SessionIQClient implements ClientModInitializer {
 					client.setScreen(new SiqScreen(null));
 				}
 			}
+			Safe.run("online notice", () -> showNoticeOnTitleScreen(siq, client));
 		});
 		ClientLifecycleEvents.CLIENT_STARTED.register(client -> HookCheck.missing());
 		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> Safe.run("shutdown", siq::shutdown));
@@ -65,6 +67,19 @@ public class SessionIQClient implements ClientModInitializer {
 
 		ScreenEvents.AFTER_INIT.register((client, screen, width, height) -> Safe.run("screen hook", () -> onScreen(siq, client, screen)));
 	}
+
+	/** First launch with online features: open the dashboard on the title screen with the notice on top. */
+	private static void showNoticeOnTitleScreen(SessionIQ siq, MinecraftClient client) {
+		if (client.currentScreen instanceof TitleScreen title && siq.isReady() && siq.online.noticeDue()) {
+			if (++titleTicks > 30) {
+				client.setScreen(new SiqScreen(title));
+			}
+		} else {
+			titleTicks = 0;
+		}
+	}
+
+	private static int titleTicks;
 
 	private static void onScreen(SessionIQ siq, MinecraftClient client, Screen screen) {
 		if (!SEEN_SCREENS.add(screen)) {

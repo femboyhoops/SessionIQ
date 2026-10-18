@@ -22,6 +22,7 @@ public final class DataPaths {
 	public final Path exports;
 	public final Path quarantine;
 	public final Path readme;
+	public final Path online;
 
 	public DataPaths(Path root) {
 		this.root = root.toAbsolutePath().normalize();
@@ -38,6 +39,7 @@ public final class DataPaths {
 		this.exports = this.root.resolve("exports");
 		this.quarantine = this.root.resolve("quarantine");
 		this.readme = this.root.resolve("README.txt");
+		this.online = this.root.resolve("online.json");
 	}
 
 	public Path sessionFile(String sessionId, long startedAt) {

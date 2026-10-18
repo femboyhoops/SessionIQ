@@ -41,7 +41,19 @@ public final class SiqConfig extends Json.Extensible {
 	public boolean diagnosticLogging = false;
 	public int checkpointSeconds = 30;
 
-	public static final String[] PAGES = {"overview", "sessions", "servers", "chat", "disconnects", "timeline", "statistics", "settings"};
+	/** Master switch for everything that talks to the SessionIQ online service. */
+	public boolean onlineEnabled = true;
+	/** Version of the first-launch notice the player accepted; nothing is uploaded until it matches OnlineService.NOTICE_VERSION. */
+	public int onlineNoticeAccepted = 0;
+	public boolean shareGlobalStats = true;
+	public boolean friendsShowOnline = true;
+	public boolean friendsShowServer = true;
+	public boolean friendsShowStats = true;
+	public boolean friendsAllowChat = true;
+	public boolean friendNotifications = true;
+
+	public static final String[] PAGES = {"overview", "sessions", "servers", "chat", "disconnects", "timeline", "statistics", "global", "friends", "suggestions", "admin",
+		"settings"};
 	public static final int[] BACKUP_INTERVALS = {6, 12, 24, 48, 168};
 
 	public java.util.List<String> validate() {
