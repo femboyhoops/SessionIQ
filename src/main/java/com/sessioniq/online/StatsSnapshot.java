@@ -24,6 +24,8 @@ public final class StatsSnapshot {
 	public String topServer;
 	public long topServerMs;
 	public List<Server> servers = new ArrayList<>();
+	/** Shared by this computer's Minecraft instances; set by OnlineService before uploading. */
+	public String deviceId;
 
 	public static final class Server {
 		public String host;

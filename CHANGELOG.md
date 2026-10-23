@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.1.1
+
+### Fixed
+
+- Opening a chat with a friend now shows the newest messages instead of the top of the history. New messages scroll into view while you are at the bottom, but not while you are reading older ones.
+- Alt accounts no longer show up as separate players in Global Statistics. Your accounts and Minecraft instances on the same computer count as one player:
+  - Only the account you are currently playing on is listed. Switching accounts or instances switches which name is shown.
+  - The Players count no longer counts the same person twice.
+  - The same play history is no longer counted twice in server totals.
+
+### Changed
+
+- To recognize your instances, SessionIQ saves a random device ID in your user folder (`.sessioniq/device.json`). Every Minecraft instance on the computer shares it, and it is sent along with your stats. It is the only file SessionIQ keeps outside the game folder. It is only created once you use the online features, and *Delete my online data* removes it.
+- Because of the device ID, the online features notice is shown once more, and nothing new is sent until you accept it.
+
 ## 1.1.0 — Online features
 
 SessionIQ can now go online, and only if you want it to. Your full history still stays on your computer. The new features share a small summary, and nothing is uploaded until you have read what is shared and pressed **Got it**.

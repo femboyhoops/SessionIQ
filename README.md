@@ -8,7 +8,7 @@ Client-side session analytics and history for **Minecraft Java Edition 1.21.11 (
 ## Install
 
 1. Install Fabric Loader for 1.21.11 and Fabric API.
-2. Copy `sessioniq-1.1.0.jar` into `.minecraft/mods/`.
+2. Copy `sessioniq-1.1.1.jar` into `.minecraft/mods/`.
 3. Start the game. Recording begins automatically. On the first launch, SessionIQ shows what its online features share; nothing is uploaded until you press **Got it**.
 
 ## Using it
@@ -30,6 +30,8 @@ Everything lives in `.minecraft/config/sessioniq/` (a `README.txt` there describ
 | `state.json` | The session being recorded; if it is still there at the next launch, that session is recovered |
 | `config.json`, `themes.json`, `manifest.json` | Preferences, custom themes, storage schema version |
 | `online.json` | Anonymous install ID and SessionIQ's own sign-in token for the online features (not included in backups) |
+
+With online features in use, SessionIQ keeps one file outside the game folder: `<user folder>/.sessioniq/device.json`. It holds a random device ID shared by your Minecraft instances on this computer, so your accounts count as one player in Global Statistics. *Delete my online data* removes it.
 | `backups/`, `exports/`, `quarantine/` | Backup archives, default export folder, untouched copies of damaged files |
 
 Timestamps are UTC epoch milliseconds; they are converted to your time zone only for display. Durations come from a monotonic clock, so changing the system clock does not distort them. Files are written to a temporary file, flushed, and atomically renamed. Chat is appended and never rewritten wholesale. A damaged file is copied to `quarantine/` and skipped, so the rest of your history still loads. History is kept until you delete it.
@@ -88,6 +90,7 @@ SessionIQ 1.1 adds optional online features, backed by a small service the Sessi
 **Also sent:**
 
 - **Launch counter:** each launch is counted anonymously, with a random install ID plus the mod and Minecraft versions.
+- **Device ID:** a random ID shared by your Minecraft instances on this computer, sent with your stats. Accounts with the same device ID count as one player, and only the account you are currently using is listed in Global Statistics.
 - **Friend messages** are stored on the service for 7 days so they can be delivered, then deleted.
 
 **Signing in** uses the Mojang-signed key that Minecraft already has for secure chat. The game signs a one-time challenge with it, and the service checks Mojang's signature on the key. Your Minecraft login token is never read or sent. The service looks up your current username by account ID on playerdb.co. Accounts without a Microsoft login (offline-mode launchers) cannot sign in, but can still view Global Statistics and send suggestions.

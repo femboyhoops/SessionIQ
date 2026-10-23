@@ -34,7 +34,8 @@ import java.util.concurrent.TimeUnit;
  * client thread; network work runs on a background thread and reports back to the client thread.
  */
 public final class OnlineService {
-	public static final int NOTICE_VERSION = 1;
+	/** Bumped when what is collected changes, so players see the notice again. 2: device ID (one player per computer). */
+	public static final int NOTICE_VERSION = 2;
 	/** Heartbeat with friends (status and messages should feel live) and without (only friend requests can arrive). */
 	public static final long PRESENCE_INTERVAL_MS = 120_000;
 	public static final long PRESENCE_IDLE_INTERVAL_MS = 600_000;
@@ -95,6 +96,7 @@ public final class OnlineService {
 	private long lastSyncStartAt;
 	private int syncGeneration;
 	private Integer onlineNow;
+	private String deviceId;
 
 	public OnlineService(SessionIQ siq) {
 		this.siq = siq;
@@ -638,7 +640,20 @@ public final class OnlineService {
 
 	/** Exactly what the next stats upload contains. */
 	public StatsSnapshot currentSnapshot() {
-		return StatsSnapshot.compute(siq.sessions.snapshot(), cfg().shareGlobalStats);
+		StatsSnapshot snap = StatsSnapshot.compute(siq.sessions.snapshot(), cfg().shareGlobalStats);
+		snap.deviceId = active() ? deviceId() : "<random ID shared by your Minecraft instances>";
+		return snap;
+	}
+
+	/**
+	 * The ID shared by this computer's instances (~/.sessioniq/device.json). Only created once online
+	 * features are in use, so nothing is written outside the game folder for players who keep them off.
+	 */
+	private String deviceId() {
+		if (deviceId == null) {
+			deviceId = DeviceId.load(state.installId);
+		}
+		return deviceId;
 	}
 
 	/** Uploads changed stats soon (at most once a minute), e.g. when Global Statistics is opened. */
@@ -662,7 +677,9 @@ public final class OnlineService {
 		syncInFlight = true;
 		List<SessionRecord> history = siq.sessions.snapshot();
 		boolean servers = cfg().shareGlobalStats;
+		String device = deviceId();
 		siq.storage.submitQuery(() -> StatsSnapshot.compute(history, servers)).thenComposeAsync(snap -> {
+			snap.deviceId = device;
 			String fp = snap.fingerprint();
 			if (fp.equals(lastSyncFingerprint)) {
 				return CompletableFuture.completedFuture(null);
@@ -825,6 +842,8 @@ public final class OnlineService {
 			state.name = null;
 			state.installId = UUID.randomUUID().toString();
 			state.save(siq.paths.online);
+			DeviceId.forget();
+			deviceId = null;
 			friends = null;
 			presence = new Api.Presence();
 			launchSent = false;

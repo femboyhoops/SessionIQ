@@ -20,7 +20,8 @@ public class WhatsSentModal extends Modal {
 		SiqConfig c = siq.config.get();
 		if (c.shareGlobalStats || c.friendsShowStats) {
 			blocks.add(new Block("Stats summary", "Sent when it changes: every 30 minutes at most, and after you leave a server. "
-				+ (c.shareGlobalStats ? "The server list feeds Global Statistics." : "Global Statistics is off, so no servers are listed."),
+				+ (c.shareGlobalStats ? "The server list feeds Global Statistics." : "Global Statistics is off, so no servers are listed.")
+				+ " The device ID makes your accounts on this computer count as one player.",
 				lines(Json.PRETTY.toJson(siq.online.currentSnapshot()))));
 		} else {
 			blocks.add(new Block("Stats summary", "Not sent: both Global Statistics and friend stats are turned off.", List.of()));

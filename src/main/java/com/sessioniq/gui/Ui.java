@@ -1095,6 +1095,12 @@ public final class Ui {
 		s.target = Math.max(0, target);
 	}
 
+	/** Shows the end of a list immediately, without animating. Call after endScroll so the content height is known. */
+	public void jumpToEnd(String id) {
+		Scroll s = scrolls.computeIfAbsent(id, k -> new Scroll());
+		s.target = s.offset = Math.max(0, s.contentH - s.viewH);
+	}
+
 	public void scrollBy(String id, int delta) {
 		Scroll s = scrolls.computeIfAbsent(id, k -> new Scroll());
 		s.target = Math.max(0, s.target + delta);

@@ -8,6 +8,7 @@ The backend for SessionIQ's optional online features: Global Statistics, Friends
 |---|---|---|
 | `installs`, `daily` | Random install ID, launch count, first/last seen, mod and Minecraft version; one row per UTC day | installs / days |
 | `players` | Minecraft UUID and name, privacy settings, all-time totals, online status and current public server | players |
+| `players.device_id`, `players.superseded` | A random device ID shared by a player's Minecraft instances. Accounts with the same ID count as one player: only the one that uploaded most recently is listed, and only its servers count toward the totals | (columns) |
 | `player_servers`, `servers` | Playtime and joins per **public** hostname (at most 15 per player), and their running totals | players × servers |
 | `friendships`, `friend_requests`, `blocks` | Who is friends with whom | friendships |
 | `messages` | Friend chat, deleted after `MESSAGE_RETENTION_DAYS` (7) by the cron job | messages per week |

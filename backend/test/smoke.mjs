@@ -122,6 +122,38 @@ assert.ok(g.topPlayers.some((p) => p.name === alice.name));
 assert.ok(g.you && g.you.rank >= 1);
 step("global statistics aggregate both players exactly once");
 
+{
+	// A main and an alt on the same computer (same device ID): only the account in use is listed,
+	// the person counts once, and their servers are not counted twice.
+	const device = randomUUID();
+	const main = await signIn(`Main${run}`);
+	const alt = await signIn(`Alt${run}`);
+	const altHost = `alts${run}.net`;
+	// Large playtime so the pair is in the top 10 regardless of other test data.
+	const stats = { ...sync([{ host: altHost, playtimeMs: 7_200_000, joins: 3 }], 500_000_000_000), deviceId: device };
+	const listed = async () => {
+		await fetch(`${BASE}/cdn-cgi/handler/scheduled`);
+		const g = await ok("GET", "/v1/global");
+		const names = g.topPlayers.map((p) => p.name);
+		return { main: names.includes(main.name), alt: names.includes(alt.name), players: g.totals.players, server: g.topServersByPlaytime.find((s) => s.host === altHost) };
+	};
+	const before = (await listed()).players;
+	await ok("POST", "/v1/me/sync", stats, main.token);
+	let now = await listed();
+	assert.deepEqual([now.main, now.alt, now.players], [true, false, before + 1]);
+	await ok("POST", "/v1/me/sync", stats, alt.token);
+	now = await listed();
+	assert.deepEqual([now.main, now.alt, now.players], [false, true, before + 1], "switching to the alt shows only the alt");
+	assert.equal(now.server.playtimeMs, 7_200_000, "the same history is not counted twice");
+	assert.equal(now.server.players, 1);
+	await ok("POST", "/v1/me/sync", stats, main.token);
+	now = await listed();
+	assert.deepEqual([now.main, now.alt, now.players], [true, false, before + 1], "switching back shows the main again");
+	assert.equal(now.server.playtimeMs, 7_200_000);
+	assert.equal((await ok("GET", "/v1/global", undefined, alt.token)).you, null, "the inactive account has no rank");
+	step("accounts on the same computer count as one player: only the account in use is listed");
+}
+
 const req = await ok("POST", "/v1/friends/request", { name: bob.name.toLowerCase() }, alice.token);
 assert.equal(req.status, "sent");
 let bobFriends = await ok("GET", "/v1/friends", undefined, bob.token);

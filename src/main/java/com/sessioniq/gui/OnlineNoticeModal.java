@@ -20,7 +20,8 @@ public class OnlineNoticeModal extends Modal {
 		"Your rank on the leaderboards");
 	static final String FRIENDS = "Friends you accept can also see whether you are online, which public server you are on, and your stats, and can chat with you.";
 	static final String NEVER = "Never uploaded: your chat logs, disconnects, timelines, single-player worlds, and private or LAN server addresses. "
-		+ "Launches are also counted anonymously (a random install ID plus the mod and Minecraft versions).";
+		+ "Launches are also counted anonymously (a random install ID plus the mod and Minecraft versions). A random device ID, saved in your user folder "
+		+ "(.sessioniq), makes your accounts and Minecraft instances on this computer count as one player: only the account you are using is listed.";
 	static final String SIGN_IN = "To sign in, SessionIQ proves the account is yours with the Mojang-signed key Minecraft already uses for secure chat, "
 		+ "and looks up your username by account ID on playerdb.co. Your Minecraft login is never sent to SessionIQ.";
 	static final String CHANGE = "You can change any of this, or delete your shared data, at any time in Settings › Online.";

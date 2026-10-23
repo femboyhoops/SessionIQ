@@ -155,14 +155,24 @@ public class SessionIQGameTest implements FabricClientGameTest {
 		ctx.waitTicks(20);
 		ctx.takeScreenshot("o_friends_list");
 
+		for (int i = 1; i <= 14; i++) {
+			http("POST", "/v1/chat/send", java.util.Map.of("to", "5e551017-0000-4000-8000-000000000001", "text",
+				"message number " + i + ", long enough to wrap onto a second line in the chat so the history is taller than the box"), friend[1]);
+		}
 		ctx.runOnClient(c -> ((SiqScreen) c.currentScreen).push(new com.sessioniq.gui.pages.FriendDetailPage((SiqScreen) c.currentScreen, friend[0], "Friendly")));
 		ctx.waitTicks(60);
+		String chatId = "friend#chat" + friend[0];
+		check(on(ctx, c -> ((SiqScreen) c.currentScreen).ui.scrollOffset(chatId) > 0 && ((SiqScreen) c.currentScreen).ui.nearBottom(chatId, 30)),
+			"a long chat opens at the newest messages, not the top");
+		ctx.takeScreenshot("o_chat_opens_at_bottom");
 		ctx.runOnClient(c -> ((SiqScreen) c.currentScreen).ui.field("friend#input" + friend[0]).set("sure, after dinner"));
 		ctx.runOnClient(c -> ((SiqScreen) c.currentScreen).ui.focus("friend#input" + friend[0]));
 		ctx.getInput().pressKey(GLFW.GLFW_KEY_ENTER);
 		ctx.waitTicks(60);
 		com.google.gson.JsonObject convo = http("GET", "/v1/chat?with=5e551017-0000-4000-8000-000000000001", null, friend[1]);
-		check(convo.getAsJsonArray("messages").size() == 2, "the reply typed in the chat box reached the friend");
+		var all = convo.getAsJsonArray("messages");
+		var last = all.get(all.size() - 1).getAsJsonObject();
+		check("sure, after dinner".equals(last.get("text").getAsString()) && !last.get("mine").getAsBoolean(), "the reply typed in the chat box reached the friend");
 		ctx.takeScreenshot("o_friend_detail");
 
 		ctx.runOnClient(c -> siq().online.onConfigChanged());

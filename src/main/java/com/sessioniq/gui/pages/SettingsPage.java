@@ -500,7 +500,8 @@ public class SettingsPage extends Page {
 
 		cy += section(ui, x, cy, w, "Your data");
 		String never = "Never uploaded: chat logs, disconnects, timelines, single-player worlds, and private or LAN server addresses. "
-			+ "To sign in, SessionIQ uses the Mojang-signed key Minecraft already has for secure chat; your Minecraft login is never sent to SessionIQ.";
+			+ "To sign in, SessionIQ uses the Mojang-signed key Minecraft already has for secure chat; your Minecraft login is never sent to SessionIQ. "
+			+ "A random device ID in your user folder (.sessioniq/device.json) makes your accounts and instances on this computer count as one player.";
 		cy += ui.paragraph(never, x, cy, w, ui.text2) + 10;
 		int bx = x;
 		int vw = ui.buttonWidth("View what's sent", Icons.EYE);

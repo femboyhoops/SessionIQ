@@ -1,5 +1,5 @@
 import { Caller } from "./auth";
-import { Body, HttpError, int, optStr } from "./http";
+import { Body, HttpError, int, isUuid, optStr } from "./http";
 import { publicHost } from "./hosts";
 import { friendsOf, notify } from "./live";
 
@@ -7,6 +7,11 @@ export const MAX_SERVERS_PER_PLAYER = 15;
 const MAX_PLAYTIME_MS = 20 * 365 * 24 * 3600 * 1000;
 const MAX_COUNT = 10_000_000;
 const SNAPSHOT_MAX_AGE_MS = 35 * 60 * 1000;
+/**
+ * Players listed in Global Statistics: sharing, with stats, and the account in use on their
+ * computer (other accounts on the same device are superseded, so each person is counted once).
+ */
+const LISTED = "share_stats = 1 AND stats_at IS NOT NULL AND superseded = 0";
 /** After a stats upload, Global Statistics is recomputed if it is older than this. */
 const SNAPSHOT_MIN_AGE_MS = 60 * 1000;
 const ROWS_PER_STATEMENT = 20;
@@ -121,13 +126,27 @@ export async function sync(env: Env, ctx: ExecutionContext, caller: Caller, body
 	const topServer = topRaw ? publicHost(topRaw) : null;
 	const topServerMs = topServer ? int(body, "topServerMs", MAX_PLAYTIME_MS) : 0;
 	const servers = player.share_stats === 1 ? parseServers(body) : new Map<string, ServerTotals>();
+	const deviceRaw = typeof body.deviceId === "string" ? body.deviceId.toLowerCase() : null;
+	const deviceId = isUuid(deviceRaw) ? deviceRaw : null;
 	const now = Date.now();
 	const statements = await replaceServers(env.DB, caller.uuid, servers);
+	if (deviceId) {
+		// One player per computer: the account uploading now is the one in use, so the device's other
+		// accounts step back. Their servers stop counting and they leave the leaderboard until used again.
+		const { results } = await env.DB.prepare("SELECT uuid FROM players WHERE device_id = ? AND uuid != ? AND superseded = 0 LIMIT 5")
+			.bind(deviceId, caller.uuid)
+			.run<{ uuid: string }>();
+		for (const other of results) {
+			statements.push(...(await replaceServers(env.DB, other.uuid, new Map())));
+		}
+		statements.push(env.DB.prepare("UPDATE players SET superseded = 1 WHERE device_id = ? AND uuid != ?").bind(deviceId, caller.uuid));
+	}
 	statements.push(
 		env.DB.prepare(
-			`UPDATE players SET playtime_ms = ?, sessions = ?, total_joins = ?, servers_joined = ?, top_server = ?, top_server_ms = ?, stats_at = ?, updated_at = ?
+			`UPDATE players SET playtime_ms = ?, sessions = ?, total_joins = ?, servers_joined = ?, top_server = ?, top_server_ms = ?, stats_at = ?, updated_at = ?,
+			 device_id = COALESCE(?, device_id), superseded = 0
 			 WHERE uuid = ?`,
-		).bind(playtime, sessions, totalJoins, serversJoined, topServer, topServerMs, now, now, caller.uuid),
+		).bind(playtime, sessions, totalJoins, serversJoined, topServer, topServerMs, now, now, deviceId, caller.uuid),
 	);
 	await env.DB.batch(statements);
 	notify(env, ctx, await friendsOf(env.DB, caller.uuid), { t: "friends" });
@@ -154,13 +173,13 @@ export interface Snapshot {
 export async function computeSnapshot(db: D1Database): Promise<Snapshot> {
 	const [totals, serverCount, byPlaytime, byJoins, players] = await db.batch([
 		db.prepare(
-			"SELECT COUNT(*) AS players, COALESCE(SUM(playtime_ms), 0) AS playtime, COALESCE(SUM(sessions), 0) AS sessions FROM players WHERE share_stats = 1 AND stats_at IS NOT NULL",
+			`SELECT COUNT(*) AS players, COALESCE(SUM(playtime_ms), 0) AS playtime, COALESCE(SUM(sessions), 0) AS sessions FROM players WHERE ${LISTED}`,
 		),
 		db.prepare("SELECT COUNT(*) AS servers FROM servers"),
 		db.prepare("SELECT host, playtime_ms, joins, players FROM servers ORDER BY playtime_ms DESC LIMIT 10"),
 		db.prepare("SELECT host, playtime_ms, joins, players FROM servers ORDER BY joins DESC LIMIT 10"),
 		db.prepare(
-			"SELECT name, playtime_ms, sessions, servers_joined, top_server FROM players WHERE share_stats = 1 AND stats_at IS NOT NULL ORDER BY playtime_ms DESC LIMIT 10",
+			`SELECT name, playtime_ms, sessions, servers_joined, top_server FROM players WHERE ${LISTED} ORDER BY playtime_ms DESC LIMIT 10`,
 		),
 	]);
 	type ServerRow = { host: string; playtime_ms: number; joins: number; players: number };
@@ -205,11 +224,11 @@ export async function global(env: Env, ctx: ExecutionContext, caller: Caller | n
 	}
 	let you: { rank: number; playtimeMs: number } | null = null;
 	if (caller) {
-		const me = await env.DB.prepare("SELECT playtime_ms, share_stats, stats_at FROM players WHERE uuid = ?")
+		const me = await env.DB.prepare("SELECT playtime_ms, share_stats, stats_at, superseded FROM players WHERE uuid = ?")
 			.bind(caller.uuid)
-			.first<{ playtime_ms: number; share_stats: number; stats_at: number | null }>();
-		if (me && me.share_stats === 1 && me.stats_at !== null) {
-			const ahead = await env.DB.prepare("SELECT COUNT(*) AS n FROM players WHERE share_stats = 1 AND stats_at IS NOT NULL AND playtime_ms > ?")
+			.first<{ playtime_ms: number; share_stats: number; stats_at: number | null; superseded: number }>();
+		if (me && me.share_stats === 1 && me.stats_at !== null && me.superseded === 0) {
+			const ahead = await env.DB.prepare(`SELECT COUNT(*) AS n FROM players WHERE ${LISTED} AND playtime_ms > ?`)
 				.bind(me.playtime_ms)
 				.first<{ n: number }>();
 			you = { rank: (ahead?.n ?? 0) + 1, playtimeMs: me.playtime_ms };

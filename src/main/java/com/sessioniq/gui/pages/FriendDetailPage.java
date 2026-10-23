@@ -32,7 +32,9 @@ public class FriendDetailPage extends Page {
 	private String chatError;
 	private boolean loaded;
 	private int retentionDays = 7;
-	private boolean scrollToEnd = true;
+	private boolean jumpToEnd = true;
+	private boolean followNew;
+	private boolean atBottom = true;
 	private int lastSignal = -1;
 
 	public FriendDetailPage(SiqScreen screen, String uuid, String name) {
@@ -107,11 +109,18 @@ public class FriendDetailPage extends Page {
 	}
 
 	private void addMessages(List<Api.Message> incoming) {
+		boolean first = messages.isEmpty();
 		for (Api.Message m : incoming) {
 			if (m.id > lastId) {
 				messages.add(m);
 				lastId = m.id;
-				scrollToEnd = true;
+				if (first) {
+					// Opening the chat: start at the newest messages.
+					jumpToEnd = true;
+				} else if (atBottom || m.mine) {
+					// Follow new messages unless the player scrolled up to read older ones.
+					followNew = true;
+				}
 			}
 		}
 		while (messages.size() > 500) {
@@ -243,10 +252,6 @@ public class FriendDetailPage extends Page {
 			wrapped.add(lines);
 			total += lines.size() * (ui.lineH() + 1) + 10 + ui.lineH() + 6;
 		}
-		if (scrollToEnd) {
-			ui.scrollTo(sid, Math.max(0, total - listH));
-			scrollToEnd = false;
-		}
 		int off = ui.beginScroll(sid, x + 1, listY, w - 2, listH);
 		int my = listY + 6 - off;
 		if (messages.isEmpty()) {
@@ -278,6 +283,16 @@ public class FriendDetailPage extends Page {
 			my += bh + ui.lineH() + 6;
 		}
 		ui.endScroll(sid, total);
+		// Scrolling is applied after endScroll, once the list knows its height; before that,
+		// "the end" of a list that has not been measured yet is its top.
+		if (jumpToEnd && !messages.isEmpty()) {
+			ui.jumpToEnd(sid);
+			jumpToEnd = false;
+		} else if (followNew) {
+			ui.scrollTo(sid, total);
+			followNew = false;
+		}
+		atBottom = total <= listH || ui.nearBottom(sid, 24);
 
 		int iy = y + h - inputH - 8;
 		if (!f.canChat) {
@@ -304,6 +319,6 @@ public class FriendDetailPage extends Page {
 	@Override
 	public void onShow() {
 		nextPollAt = 0;
-		scrollToEnd = true;
+		jumpToEnd = true;
 	}
 }
